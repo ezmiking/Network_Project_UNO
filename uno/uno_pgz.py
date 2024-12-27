@@ -3,7 +3,6 @@ from itertools import product, repeat, chain
 from threading import Thread
 from time import sleep
 
-
 COLORS = ['red', 'yellow', 'green', 'blue']
 ALL_COLORS = COLORS + ['black']
 NUMBERS = list(range(10)) + list(range(1, 10))
