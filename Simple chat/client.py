@@ -31,7 +31,7 @@ def send_messages(client_socket):
             break
 
 def start_client():
-    global user_token  # --- TOKEN ADDED ---
+    global user_token
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect((HOST, PORT))
     print(f"Connected to server at {HOST}:{PORT}")
@@ -62,11 +62,10 @@ def start_client():
             if len(parts) == 2:
                 user_token = parts[1].strip()
                 print("Token received:", user_token)
-
             print("Authentication successful! You can now play.")
             break
         else:
-            print("Authentication failed or user already exists. Try again.")
+            print("Authentication failed or user already exists (or used in same game). Try again.")
 
     threading.Thread(target=receive_messages, args=(client_socket,), daemon=True).start()
     send_messages(client_socket)

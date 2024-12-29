@@ -1,12 +1,13 @@
 import socket
 import threading
+import json
 
 import jwt
 import datetime
 
-from uno.uno import UnoGame
+from uno.uno import UnoGame, UnoCard
 from database import SessionLocal
-from models import User
+from models import User, SaveGame
 
 HOST = '127.0.0.1'
 PORT = 12345
@@ -27,7 +28,7 @@ def broadcast(message, sender_socket=None):
                     clients.remove(client)
 
 def generate_token(username):
-    payload = {"sub": username,"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
+    payload = {"sub": username, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token
 
@@ -66,7 +67,6 @@ def authenticate_client(client_socket):
 
             token = generate_token(username)
             client_socket.send(f"AUTH_SUCCESS {token}\n".encode('utf-8'))
-
             db.close()
             return True, username
 
@@ -78,7 +78,6 @@ def authenticate_client(client_socket):
 
             token = generate_token(username)
             client_socket.send(f"AUTH_SUCCESS {token}\n".encode('utf-8'))
-
             db.close()
             return True, username
 
@@ -91,6 +90,70 @@ def authenticate_client(client_socket):
         print(f"Error in authenticate_client: {e}")
         client_socket.send(f"AUTH_FAILED Internal error: {e}\n".encode('utf-8'))
         return False, None
+
+
+def save_game_to_db(game):
+
+    db = SessionLocal()
+    players_str = ",".join(authenticated_users)
+    hands = []
+    for p in game.players:
+        card_list = []
+        for c in p.hand:
+            card_list.append({"color": c.color,"card_type": c.card_type})
+        hands.append(json.dumps(card_list))
+
+    current_color = game.current_card.color
+    current_type = game.current_card.card_type
+
+    record = SaveGame(
+        player_usernames=players_str,
+        current_card_color=current_color,
+        current_card_type=str(current_type),
+        player1_hand=hands[0],
+        player2_hand=hands[1],
+        player3_hand=hands[2],
+        player4_hand=hands[3]
+    )
+    db.add(record)
+    db.commit()
+    db.close()
+
+def load_game_from_db():
+    db = SessionLocal()
+    saved_record = db.query(SaveGame).order_by(SaveGame.id.desc()).first()
+    if not saved_record:
+        db.close()
+        return None
+
+    saved_players = saved_record.player_usernames.split(",")
+    if set(saved_players) != set(authenticated_users):
+        db.close()
+        return None
+
+    game = UnoGame(4, random=False)
+
+    hands_json = [
+        saved_record.player1_hand,
+        saved_record.player2_hand,
+        saved_record.player3_hand,
+        saved_record.player4_hand
+    ]
+
+    for i, p in enumerate(game.players):
+        p.hand.clear()
+        card_list = json.loads(hands_json[i])
+        for cdict in card_list:
+            color = cdict["color"]
+            ctype = cdict["card_type"]
+            p.hand.append(UnoCard(color, ctype))
+
+    cc_color = saved_record.current_card_color
+    cc_type = saved_record.current_card_type
+    game.deck[-1] = UnoCard(cc_color, int(cc_type) if cc_type.isdigit() else cc_type)
+
+    db.close()
+    return game
 
 def handle_client(client_socket, game: UnoGame):
     while True:
@@ -112,8 +175,14 @@ def handle_client(client_socket, game: UnoGame):
                 client_socket.send(scoreboard.encode('utf-8'))
                 continue
 
+            if message.lower() == "save":
+                save_game_to_db(game)
+                broadcast(b"Game saved. Closing the server...\n")
+                break
+
             parts = message.split()
             if len(parts) > 0 and parts[0].lower() == "chat":
+                # chat [P <username>] <message...>
                 if len(parts) == 1:
                     client_socket.send(b"No chat message provided.\n")
                     continue
@@ -125,7 +194,6 @@ def handle_client(client_socket, game: UnoGame):
 
                     target_username = parts[2]
                     private_msg = " ".join(parts[3:])
-
                     if target_username not in authenticated_users:
                         client_socket.send(f"User '{target_username}' not found.\n".encode('utf-8'))
                         continue
@@ -223,7 +291,6 @@ def handle_client(client_socket, game: UnoGame):
 
 def handel_game():
 
-    game = None
     while True:
         game = UnoGame(4)
         if game.current_card.color != "black":
@@ -231,12 +298,40 @@ def handel_game():
 
     for i, client in enumerate(clients):
         client.send(f"Your initial hand: {game.players[i].hand}\n".encode('utf-8'))
-        #if game.current_card.card_type != "black"
         client.send(f"Current card: {game.current_card.color} {game.current_card.card_type}\n".encode('utf-8'))
 
     for i, client in enumerate(clients):
         t = threading.Thread(target=handle_client, args=(client, game))
         t.start()
+
+def ask_players_for_save_decision():
+    answers = []
+    for i, client in enumerate(clients):
+        client.send(b"Do you have a saved game? (Y/N)\n")
+        ans = client.recv(1024).decode('utf-8').strip().upper()
+        answers.append(ans)
+    return all(a == "Y" for a in answers)
+
+def start_game_or_load():
+    want_load = ask_players_for_save_decision()
+    if want_load:
+        game = load_game_from_db()
+        if game:
+            print("[*] Loaded saved game from DB.")
+            for c in clients:
+                c.send(b"Loaded saved game.\n")
+            for i, client in enumerate(clients):
+                t = threading.Thread(target=handle_client, args=(client, game))
+                t.start()
+            return
+        else:
+            print("[!] No valid saved game found or players mismatch. Starting new game.")
+            for c in clients:
+                c.send(b"No valid saved game found. Starting new game.\n")
+            handel_game()
+    else:
+        handel_game()
+
 
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -250,13 +345,20 @@ def start_server():
 
         success, username = authenticate_client(client_socket)
         if success:
+            if username in authenticated_users:
+                client_socket.send(b"AUTH_FAILED This username is already in the game.\n")
+                client_socket.close()
+                print(f"[-] User '{username}' tried to login again. Refused.")
+                continue
+
             print(f"[+] Auth success for user '{username}' from {client_address}")
             clients.append(client_socket)
             authenticated_users.append(username)
 
             if len(clients) == 4:
-                print("[*] 4 players connected. Starting the game...")
-                handel_game()
+                print("[*] 4 players connected. Checking for saved game or new game.")
+                start_game_or_load()
+
         else:
             print(f"[-] Auth failed from {client_address}, closing socket.")
             client_socket.close()
