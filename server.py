@@ -12,7 +12,6 @@ clients = []
 authenticated_users = []
 
 def broadcast(message, sender_socket=None):
-    """Broadcast a message to all clients except the sender."""
     for client in clients:
         if client != sender_socket:
             try:
@@ -23,6 +22,7 @@ def broadcast(message, sender_socket=None):
                     clients.remove(client)
 
 def authenticate_client(client_socket):
+
     try:
         data = client_socket.recv(1024).decode('utf-8').strip()
         if not data:
@@ -79,14 +79,15 @@ def authenticate_client(client_socket):
         return False, None
 
 def handle_client(client_socket, game: UnoGame):
-
     while True:
         try:
             data = client_socket.recv(1024)
             if not data:
                 raise Exception("Empty message received or client disconnected.")
             message = data.decode('utf-8').strip()
-            print(f"Received from {clients.index(client_socket)}: {message}")
+
+            current_index = clients.index(client_socket)
+            print(f"Received from client[{current_index}]: {message}")
 
             if message.upper() == "LW":
                 with SessionLocal() as db:
@@ -97,21 +98,45 @@ def handle_client(client_socket, game: UnoGame):
                 client_socket.send(scoreboard.encode('utf-8'))
                 continue
 
-            parts = message.split(maxsplit=1)
+            parts = message.split()
             if len(parts) > 0 and parts[0].lower() == "chat":
                 if len(parts) == 1:
                     client_socket.send(b"No chat message provided.\n")
+                    continue
+
+                if parts[1].upper() == "P":
+
+                    if len(parts) < 4:
+                        client_socket.send(b"Usage: chat P <username> <message>\n")
+                        continue
+
+                    target_username = parts[2]
+                    private_msg = " ".join(parts[3:])
+
+                    if target_username not in authenticated_users:
+                        client_socket.send(f"User '{target_username}' not found.\n".encode('utf-8'))
+                        continue
+
+                    target_index = authenticated_users.index(target_username)
+                    sender_name = authenticated_users[current_index]
+                    final_msg = f"[PRIVATE from {sender_name}] {private_msg}"
+
+                    target_socket = clients[target_index]
+                    target_socket.send(final_msg.encode('utf-8'))
+
                 else:
-                    chat_msg = f"[CHAT] Player {clients.index(client_socket)}: {parts[1]}"
-                    broadcast(chat_msg.encode('utf-8'))
+
+                    chat_msg = " ".join(parts[1:])
+                    sender_name = authenticated_users[current_index]
+                    broadcast_msg = f"[CHAT from {sender_name}] {chat_msg}"
+                    broadcast(broadcast_msg.encode('utf-8'))
                 continue
 
-            if game.current_player.player_id == clients.index(client_socket):
-
+            if game.current_player.player_id == current_index:
                 if message == "pickup":
                     game.play(player=game.current_player.player_id, card=None)
                     broadcast(
-                        f"Player {clients.index(client_socket)} picked up a card\n".encode('utf-8')
+                        f"Player {current_index} picked up a card\n".encode('utf-8')
                     )
 
                 else:
@@ -134,11 +159,16 @@ def handle_client(client_socket, game: UnoGame):
                                 and c.card_type == card_value
                                 and game.current_card.playable(c)):
                             if c.color == 'black':
-                                game.play(player=game.current_player.player_id,card=game.current_player.hand.index(c),
+                                game.play(
+                                    player=game.current_player.player_id,
+                                    card=game.current_player.hand.index(c),
                                     new_color=new_color
                                 )
                             else:
-                                game.play(player=game.current_player.player_id, card=game.current_player.hand.index(c))
+                                game.play(
+                                    player=game.current_player.player_id,
+                                    card=game.current_player.hand.index(c)
+                                )
                             doesItPlayed = True
                             break
 
@@ -146,7 +176,8 @@ def handle_client(client_socket, game: UnoGame):
                         client_socket.send(b"Invalid card or not playable.\n")
                         continue
 
-                    broadcast(f"Player {clients.index(client_socket)} played: {message}\n"f"Current card: {game.current_card}\n".encode('utf-8'))
+                    broadcast(f"Player {current_index} played: {message}\n"
+                              f"Current card: {game.current_card}\n".encode('utf-8'))
 
                 if not game.is_active:
                     winner_player = game.winner
@@ -169,7 +200,6 @@ def handle_client(client_socket, game: UnoGame):
                     broadcast(f"Game Over! Winner is {winner_name}\n".encode('utf-8'))
                     break
 
-
                 next_player_id = game.current_player.player_id
                 clients[next_player_id].send(
                     f"Your hand: {game.current_player.hand}\nYour turn!\n".encode('utf-8')
@@ -178,11 +208,10 @@ def handle_client(client_socket, game: UnoGame):
                 client_socket.send(b"Not your turn!\n")
 
         except Exception as e:
-            print(f"[!] Client {clients.index(client_socket)} disconnected: {e}")
+            print(f"[!] Client {current_index} disconnected: {e}")
             break
 
 def handel_game():
-
     game = UnoGame(4)
     for i, client in enumerate(clients):
         client.send(f"Your initial hand: {game.players[i].hand}\n".encode('utf-8'))
@@ -193,7 +222,6 @@ def handel_game():
         t.start()
 
 def start_server():
-    """Start the Uno server and wait for 4 players."""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     server.listen()

@@ -60,7 +60,9 @@ def start_client():
         else:
             print("Authentication failed or user already exists. Try again.")
 
+    # آغاز Thread دریافت پیام‌ها
     threading.Thread(target=receive_messages, args=(client_socket,), daemon=True).start()
+    # آغاز حلقهٔ ارسال پیام‌ها
     send_messages(client_socket)
 
 if __name__ == "__main__":
