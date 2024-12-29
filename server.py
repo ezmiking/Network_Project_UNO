@@ -28,10 +28,7 @@ def broadcast(message, sender_socket=None):
 
 # --- TOKEN ADDED ---
 def generate_token(username):
-    payload = {
-        "sub": username,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
-    }
+    payload = {"sub": username,"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token
 
@@ -68,7 +65,7 @@ def authenticate_client(client_socket):
             db.commit()
             db.refresh(new_user)
 
-            token = generate_token(username)  # --- TOKEN ADDED ---
+            token = generate_token(username)
             client_socket.send(f"AUTH_SUCCESS {token}\n".encode('utf-8'))
 
             db.close()
@@ -148,7 +145,6 @@ def handle_client(client_socket, game: UnoGame):
                     broadcast(broadcast_msg.encode('utf-8'))
                 continue
 
-            # کنترل نوبت بازی
             if game.current_player.player_id == current_index:
                 if message == "pickup":
                     game.play(player=game.current_player.player_id, card=None)
@@ -194,7 +190,6 @@ def handle_client(client_socket, game: UnoGame):
                     broadcast(f"Player {current_index} played: {message}\n"
                               f"Current card: {game.current_card}\n".encode('utf-8'))
 
-                # اتمام بازی
                 if not game.is_active:
                     winner_player = game.winner
                     winner_index = game.players.index(winner_player)
