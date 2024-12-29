@@ -91,7 +91,6 @@ def authenticate_client(client_socket):
         client_socket.send(f"AUTH_FAILED Internal error: {e}\n".encode('utf-8'))
         return False, None
 
-
 def save_game_to_db(game):
 
     db = SessionLocal()
@@ -100,16 +99,23 @@ def save_game_to_db(game):
     for p in game.players:
         card_list = []
         for c in p.hand:
-            card_list.append({"color": c.color,"card_type": c.card_type})
+            card_list.append({
+                "color": c.color,
+                "card_type": c.card_type
+            })
+        import json
         hands.append(json.dumps(card_list))
 
     current_color = game.current_card.color
     current_type = game.current_card.card_type
+    current_index = game.players.index(game.current_player)
 
     record = SaveGame(
         player_usernames=players_str,
         current_card_color=current_color,
         current_card_type=str(current_type),
+        current_player_index=current_index,
+
         player1_hand=hands[0],
         player2_hand=hands[1],
         player3_hand=hands[2],
@@ -120,6 +126,7 @@ def save_game_to_db(game):
     db.close()
 
 def load_game_from_db():
+
     db = SessionLocal()
     saved_record = db.query(SaveGame).order_by(SaveGame.id.desc()).first()
     if not saved_record:
@@ -133,13 +140,13 @@ def load_game_from_db():
 
     game = UnoGame(4, random=False)
 
+    import json
     hands_json = [
         saved_record.player1_hand,
         saved_record.player2_hand,
         saved_record.player3_hand,
         saved_record.player4_hand
     ]
-
     for i, p in enumerate(game.players):
         p.hand.clear()
         card_list = json.loads(hands_json[i])
@@ -150,7 +157,13 @@ def load_game_from_db():
 
     cc_color = saved_record.current_card_color
     cc_type = saved_record.current_card_type
-    game.deck[-1] = UnoCard(cc_color, int(cc_type) if cc_type.isdigit() else cc_type)
+    if cc_type.isdigit():
+        cc_type = int(cc_type)
+    game.deck[-1] = UnoCard(cc_color, cc_type)
+    cp_idx = saved_record.current_player_index
+
+    while game.players.index(game.current_player) != cp_idx:
+        next(game)
 
     db.close()
     return game
@@ -182,7 +195,6 @@ def handle_client(client_socket, game: UnoGame):
 
             parts = message.split()
             if len(parts) > 0 and parts[0].lower() == "chat":
-                # chat [P <username>] <message...>
                 if len(parts) == 1:
                     client_socket.send(b"No chat message provided.\n")
                     continue
@@ -320,6 +332,11 @@ def start_game_or_load():
             print("[*] Loaded saved game from DB.")
             for c in clients:
                 c.send(b"Loaded saved game.\n")
+
+            for i, client in enumerate(clients):
+                hand_str = f"Your loaded hand: {game.players[i].hand}\n"
+                client.send(hand_str.encode('utf-8'))
+
             for i, client in enumerate(clients):
                 t = threading.Thread(target=handle_client, args=(client, game))
                 t.start()
@@ -331,7 +348,6 @@ def start_game_or_load():
             handel_game()
     else:
         handel_game()
-
 
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

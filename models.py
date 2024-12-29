@@ -18,6 +18,7 @@ class SaveGame(Base):
 
     current_card_color = Column(String, nullable=False)
     current_card_type = Column(String, nullable=False)
+    current_player_index = Column(Integer, nullable=False)
 
     player1_hand = Column(String, nullable=False)
     player2_hand = Column(String, nullable=False)
