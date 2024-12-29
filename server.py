@@ -222,9 +222,16 @@ def handle_client(client_socket, game: UnoGame):
             break
 
 def handel_game():
-    game = UnoGame(4)
+
+    game = None
+    while True:
+        game = UnoGame(4)
+        if game.current_card.color != "black":
+            break
+
     for i, client in enumerate(clients):
         client.send(f"Your initial hand: {game.players[i].hand}\n".encode('utf-8'))
+        #if game.current_card.card_type != "black"
         client.send(f"Current card: {game.current_card.color} {game.current_card.card_type}\n".encode('utf-8'))
 
     for i, client in enumerate(clients):
