@@ -5,7 +5,6 @@ HOST = '127.0.0.1'  # Server address
 PORT = 12345        # Server port
 
 def receive_messages(client_socket):
-    """Receive messages from the server."""
     while True:
         try:
             message = client_socket.recv(1024).decode('utf-8')
@@ -20,10 +19,11 @@ def receive_messages(client_socket):
             break
 
 def send_messages(client_socket):
-    """Send messages to the server."""
     while True:
         message = input()
         try:
+            # دستور LW -> سرور را در جریان بگذار
+            # یا هر دستور دیگری مثل "pickup" یا "chat hi" یا "red 5" و...
             client_socket.send(message.encode('utf-8'))
         except:
             print("Disconnected from the server.")
@@ -31,12 +31,11 @@ def send_messages(client_socket):
             break
 
 def start_client():
-    """Start the chat client."""
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect((HOST, PORT))
     print(f"Connected to server at {HOST}:{PORT}")
 
-    # --- مرحلهٔ احراز هویت (لاگین یا ساین‌آپ) ---
+    # مرحلهٔ احراز هویت
     while True:
         print("Do you want to (1) Login or (2) Sign up?")
         choice = input("Enter 1 or 2: ").strip()
@@ -47,8 +46,6 @@ def start_client():
         username = input("Username: ").strip()
         password = input("Password: ").strip()
 
-        # ساخت دستوری برای سرور
-        # AUTH <login/signup> <username> <password>
         if choice == "1":
             auth_type = "login"
         else:
@@ -57,18 +54,15 @@ def start_client():
         auth_message = f"AUTH {auth_type} {username} {password}"
         client_socket.send(auth_message.encode('utf-8'))
 
-        # منتظر پاسخ از سرور
         server_response = client_socket.recv(1024).decode('utf-8')
         print("Server Response:", server_response)
 
         if server_response.startswith("AUTH_SUCCESS"):
-            # وارد مرحله بازی شویم
             print("Authentication successful! You can now play.")
             break
         else:
             print("Authentication failed or user already exists. Try again.")
 
-    # --- حالا وارد منطق اصلی دریافت/ارسال شویم ---
     threading.Thread(target=receive_messages, args=(client_socket,), daemon=True).start()
     send_messages(client_socket)
 
