@@ -134,16 +134,11 @@ def handle_client(client_socket, game: UnoGame):
                                 and c.card_type == card_value
                                 and game.current_card.playable(c)):
                             if c.color == 'black':
-                                game.play(
-                                    player=game.current_player.player_id,
-                                    card=game.current_player.hand.index(c),
+                                game.play(player=game.current_player.player_id,card=game.current_player.hand.index(c),
                                     new_color=new_color
                                 )
                             else:
-                                game.play(
-                                    player=game.current_player.player_id,
-                                    card=game.current_player.hand.index(c)
-                                )
+                                game.play(player=game.current_player.player_id, card=game.current_player.hand.index(c))
                             doesItPlayed = True
                             break
 
@@ -151,10 +146,7 @@ def handle_client(client_socket, game: UnoGame):
                         client_socket.send(b"Invalid card or not playable.\n")
                         continue
 
-                    broadcast(
-                        f"Player {clients.index(client_socket)} played: {message}\n"
-                        f"Current card: {game.current_card}\n".encode('utf-8')
-                    )
+                    broadcast(f"Player {clients.index(client_socket)} played: {message}\n"f"Current card: {game.current_card}\n".encode('utf-8'))
 
                 if not game.is_active:
                     winner_player = game.winner

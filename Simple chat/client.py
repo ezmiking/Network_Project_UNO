@@ -22,8 +22,6 @@ def send_messages(client_socket):
     while True:
         message = input()
         try:
-            # دستور LW -> سرور را در جریان بگذار
-            # یا هر دستور دیگری مثل "pickup" یا "chat hi" یا "red 5" و...
             client_socket.send(message.encode('utf-8'))
         except:
             print("Disconnected from the server.")
@@ -35,7 +33,6 @@ def start_client():
     client_socket.connect((HOST, PORT))
     print(f"Connected to server at {HOST}:{PORT}")
 
-    # مرحلهٔ احراز هویت
     while True:
         print("Do you want to (1) Login or (2) Sign up?")
         choice = input("Enter 1 or 2: ").strip()
