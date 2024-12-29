@@ -26,7 +26,6 @@ def broadcast(message, sender_socket=None):
                 if client in clients:
                     clients.remove(client)
 
-# --- TOKEN ADDED ---
 def generate_token(username):
     payload = {"sub": username,"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
