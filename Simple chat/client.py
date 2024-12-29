@@ -1,8 +1,10 @@
 import socket
 import threading
 
-HOST = '127.0.0.1'  # Server address
-PORT = 12345        # Server port
+HOST = '127.0.0.1'
+PORT = 12345
+
+user_token = None
 
 def receive_messages(client_socket):
     while True:
@@ -29,6 +31,7 @@ def send_messages(client_socket):
             break
 
 def start_client():
+    global user_token  # --- TOKEN ADDED ---
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect((HOST, PORT))
     print(f"Connected to server at {HOST}:{PORT}")
@@ -55,14 +58,17 @@ def start_client():
         print("Server Response:", server_response)
 
         if server_response.startswith("AUTH_SUCCESS"):
+            parts = server_response.split(maxsplit=1)
+            if len(parts) == 2:
+                user_token = parts[1].strip()
+                print("Token received:", user_token)
+
             print("Authentication successful! You can now play.")
             break
         else:
             print("Authentication failed or user already exists. Try again.")
 
-    # آغاز Thread دریافت پیام‌ها
     threading.Thread(target=receive_messages, args=(client_socket,), daemon=True).start()
-    # آغاز حلقهٔ ارسال پیام‌ها
     send_messages(client_socket)
 
 if __name__ == "__main__":

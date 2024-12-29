@@ -1,12 +1,17 @@
 import socket
 import threading
 
+import jwt
+import datetime
+
 from uno.uno import UnoGame
 from database import SessionLocal
 from models import User
 
 HOST = '127.0.0.1'
 PORT = 12345
+
+SECRET_KEY = "MY_SECRET_JWT_KEY_123"
 
 clients = []
 authenticated_users = []
@@ -21,8 +26,16 @@ def broadcast(message, sender_socket=None):
                 if client in clients:
                     clients.remove(client)
 
-def authenticate_client(client_socket):
+# --- TOKEN ADDED ---
+def generate_token(username):
+    payload = {
+        "sub": username,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return token
 
+def authenticate_client(client_socket):
     try:
         data = client_socket.recv(1024).decode('utf-8').strip()
         if not data:
@@ -49,12 +62,15 @@ def authenticate_client(client_socket):
                 client_socket.send(b"AUTH_FAILED User already exists.\n")
                 db.close()
                 return False, None
+
             new_user = User(username=username, password=password, wins=0, losses=0)
             db.add(new_user)
             db.commit()
             db.refresh(new_user)
 
-            client_socket.send(b"AUTH_SUCCESS Signup successful.\n")
+            token = generate_token(username)  # --- TOKEN ADDED ---
+            client_socket.send(f"AUTH_SUCCESS {token}\n".encode('utf-8'))
+
             db.close()
             return True, username
 
@@ -64,7 +80,9 @@ def authenticate_client(client_socket):
                 db.close()
                 return False, None
 
-            client_socket.send(b"AUTH_SUCCESS Login successful.\n")
+            token = generate_token(username)
+            client_socket.send(f"AUTH_SUCCESS {token}\n".encode('utf-8'))
+
             db.close()
             return True, username
 
@@ -105,7 +123,6 @@ def handle_client(client_socket, game: UnoGame):
                     continue
 
                 if parts[1].upper() == "P":
-
                     if len(parts) < 4:
                         client_socket.send(b"Usage: chat P <username> <message>\n")
                         continue
@@ -125,19 +142,17 @@ def handle_client(client_socket, game: UnoGame):
                     target_socket.send(final_msg.encode('utf-8'))
 
                 else:
-
                     chat_msg = " ".join(parts[1:])
                     sender_name = authenticated_users[current_index]
                     broadcast_msg = f"[CHAT from {sender_name}] {chat_msg}"
                     broadcast(broadcast_msg.encode('utf-8'))
                 continue
 
+            # کنترل نوبت بازی
             if game.current_player.player_id == current_index:
                 if message == "pickup":
                     game.play(player=game.current_player.player_id, card=None)
-                    broadcast(
-                        f"Player {current_index} picked up a card\n".encode('utf-8')
-                    )
+                    broadcast(f"Player {current_index} picked up a card\n".encode('utf-8'))
 
                 else:
                     card_parts = message.split()
@@ -155,9 +170,9 @@ def handle_client(client_socket, game: UnoGame):
 
                     doesItPlayed = False
                     for c in game.current_player.hand:
-                        if (c.color == card_color
-                                and c.card_type == card_value
-                                and game.current_card.playable(c)):
+                        if (c.color == card_color and
+                            c.card_type == card_value and
+                            game.current_card.playable(c)):
                             if c.color == 'black':
                                 game.play(
                                     player=game.current_player.player_id,
@@ -179,6 +194,7 @@ def handle_client(client_socket, game: UnoGame):
                     broadcast(f"Player {current_index} played: {message}\n"
                               f"Current card: {game.current_card}\n".encode('utf-8'))
 
+                # اتمام بازی
                 if not game.is_active:
                     winner_player = game.winner
                     winner_index = game.players.index(winner_player)
