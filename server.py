@@ -12,11 +12,12 @@ from models import User, SaveGame
 HOST = '127.0.0.1'
 PORT = 12345
 
-SECRET_KEY = "MY_SECRET_JWT_KEY_123"
+SECRET_KEY = "KHKHVNSJFVE$RNRFOKE-32E302MRF$"
 
 clients = []
 authenticated_users = []
 
+#send message for all user
 def broadcast(message, sender_socket=None):
     for client in clients:
         if client != sender_socket:
@@ -27,11 +28,13 @@ def broadcast(message, sender_socket=None):
                 if client in clients:
                     clients.remove(client)
 
+#make token for each user so they can't cheat
 def generate_token(username):
     payload = {"sub": username, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token
 
+#check identity for exist user or new user
 def authenticate_client(client_socket):
     try:
         data = client_socket.recv(1024).decode('utf-8').strip()
@@ -91,6 +94,7 @@ def authenticate_client(client_socket):
         client_socket.send(f"AUTH_FAILED Internal error: {e}\n".encode('utf-8'))
         return False, None
 
+#save game in postgres
 def save_game_to_db(game):
 
     db = SessionLocal()
@@ -125,6 +129,7 @@ def save_game_to_db(game):
     db.commit()
     db.close()
 
+#load game from postgres
 def load_game_from_db():
 
     db = SessionLocal()
@@ -168,6 +173,7 @@ def load_game_from_db():
     db.close()
     return game
 
+#Manage requests and communications with each client
 def handle_client(client_socket, game: UnoGame):
     while True:
         try:
@@ -301,6 +307,7 @@ def handle_client(client_socket, game: UnoGame):
             print(f"[!] Client {current_index} disconnected: {e}")
             break
 
+#Manage the game and start a new game
 def handel_game():
 
     while True:
@@ -316,6 +323,7 @@ def handel_game():
         t = threading.Thread(target=handle_client, args=(client, game))
         t.start()
 
+#
 def ask_players_for_save_decision():
     answers = []
     for i, client in enumerate(clients):
@@ -324,6 +332,7 @@ def ask_players_for_save_decision():
         answers.append(ans)
     return all(a == "Y" for a in answers)
 
+#function for ask load old game or start new game
 def start_game_or_load():
     want_load = ask_players_for_save_decision()
     if want_load:
@@ -349,6 +358,7 @@ def start_game_or_load():
     else:
         handel_game()
 
+#make server
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
@@ -372,7 +382,7 @@ def start_server():
             authenticated_users.append(username)
 
             if len(clients) == 4:
-                print("[*] 4 players connected. Checking for saved game or new game.")
+                print("[*] 4 players connected -> Checking for saved game or new game.")
                 start_game_or_load()
 
         else:
