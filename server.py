@@ -34,6 +34,16 @@ def generate_token(username):
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return token
 
+def verify_token(token):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload["sub"]
+        print("Token has expired.")
+        return None
+    except jwt.InvalidTokenError:
+        print("Invalid token.")
+        return None
+
 #check identity for exist user or new user
 def authenticate_client(client_socket):
     try:
@@ -182,10 +192,27 @@ def handle_client(client_socket, game: UnoGame):
                 raise Exception("Empty message received or client disconnected.")
             message = data.decode('utf-8').strip()
 
-            current_index = clients.index(client_socket)
-            print(f"Received from client[{current_index}]: {message}")
+            if message.startswith("TOKEN"):
+                parts = message.split(maxsplit=2)
+                if len(parts) < 3:
+                    client_socket.send(b"Invalid TOKEN format")
+                    continue
 
-            if message.upper() == "LW":
+                token = parts[1]
+                username = verify_token(token)
+                if not username:
+                    client_socket.send(b"Invalid or expired TOKEN.")
+                    continue
+
+                actual_message = parts[2]
+            else:
+                client_socket.send(b"TOKEN missing in the message.")
+                continue
+
+            current_index = clients.index(client_socket)
+            print(f"Received from client[{current_index}]: {actual_message}")
+
+            if actual_message.upper() == "LW":
                 with SessionLocal() as db:
                     users = db.query(User).all()
                     scoreboard = "\n--- Leaderboard (All Users) ---\n"
@@ -194,12 +221,12 @@ def handle_client(client_socket, game: UnoGame):
                 client_socket.send(scoreboard.encode('utf-8'))
                 continue
 
-            if message.lower() == "save":
+            if actual_message.lower() == "save":
                 save_game_to_db(game)
                 broadcast(b"Game saved. Closing the server...\n")
                 break
 
-            parts = message.split()
+            parts = actual_message.split()
             if len(parts) > 0 and parts[0].lower() == "chat":
                 if len(parts) == 1:
                     client_socket.send(b"No chat message provided.\n")
@@ -231,12 +258,12 @@ def handle_client(client_socket, game: UnoGame):
                 continue
 
             if game.current_player.player_id == current_index:
-                if message == "pickup":
+                if actual_message == "pickup":
                     game.play(player=game.current_player.player_id, card=None)
                     broadcast(f"Player {current_index} picked up a card\n".encode('utf-8'))
 
                 else:
-                    card_parts = message.split()
+                    card_parts = actual_message.split()
                     if len(card_parts) < 2:
                         client_socket.send(b"Invalid card format.\n")
                         continue
@@ -269,10 +296,10 @@ def handle_client(client_socket, game: UnoGame):
                             break
 
                     if not doesItPlayed:
-                        client_socket.send(b"Invalid card or not playable.\n")
+                        client_socket.send(b"Invalid card or not playable.")
                         continue
 
-                    broadcast(f"Player {current_index} played: {message}\n"
+                    broadcast(f"Player {current_index} played: {actual_message}\n"
                               f"Current card: {game.current_card}\n".encode('utf-8'))
 
                 if not game.is_active:

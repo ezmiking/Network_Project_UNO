@@ -21,14 +21,26 @@ def receive_messages(client_socket):
             break
 
 def send_messages(client_socket):
+    global user_token
     while True:
         message = input()
         try:
+            if user_token:
+                message = f"TOKEN {user_token} {message}"
             client_socket.send(message.encode('utf-8'))
         except:
             print("Disconnected from the server.")
             client_socket.close()
             break
+
+    # while True:
+    #     message = input()
+    #     try:
+    #         client_socket.send(message.encode('utf-8'))
+    #     except:
+    #         print("Disconnected from the server.")
+    #         client_socket.close()
+    #         break
 
 def start_client():
     global user_token
